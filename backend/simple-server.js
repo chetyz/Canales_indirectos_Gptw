@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+const bcrypt = require('bcryptjs');
+const db = require('./db-sqlite');
 require('dotenv').config();
 
 const app = express();
@@ -12,34 +14,7 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// In-memory storage (for demo purposes)
-let leads = [];
-let users = [
-  {
-    id: '1',
-    email: 'admin@leadmanager.com',
-    password: 'admin123',
-    firstName: 'Admin',
-    lastName: 'System',
-    role: 'ADMIN'
-  },
-  {
-    id: '2',
-    email: 'user@leadmanager.com',
-    password: 'user123',
-    firstName: 'Usuario',
-    lastName: 'Demo',
-    role: 'USER'
-  },
-  {
-    id: 'guest-user-id',
-    email: 'guest@system.com',
-    password: 'no-password',
-    firstName: 'Visitante',
-    lastName: 'Anónimo',
-    role: 'GUEST'
-  }
-];
+// Database is now handled by SQLite
 
 // Salesforce connection
 let salesforceToken = null;
@@ -80,13 +55,23 @@ async function connectToSalesforce() {
 }
 
 // Auth endpoint
-app.post('/api/auth/login', (req, res) => {
-  console.log('🔐 Intento de login:', req.body);
-  const { email, password } = req.body;
-  const user = users.find(u => u.email === email && u.password === password);
-  console.log('👤 Usuario encontrado:', user ? 'SÍ' : 'NO');
-  
-  if (user) {
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    console.log('🔐 Intento de login:', req.body);
+    const { email, password } = req.body;
+    
+    const user = await db.user.findUnique({ where: { email } });
+    console.log('👤 Usuario encontrado:', user ? 'SÍ' : 'NO');
+    
+    if (!user) {
+      return res.status(400).json({ message: 'Credenciales inválidas' });
+    }
+    
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
+      return res.status(400).json({ message: 'Credenciales inválidas' });
+    }
+    
     res.json({
       message: 'Login exitoso',
       token: 'demo-token',
@@ -98,70 +83,93 @@ app.post('/api/auth/login', (req, res) => {
         role: user.role
       }
     });
-  } else {
-    res.status(400).json({ message: 'Credenciales inválidas' });
+  } catch (error) {
+    console.error('Error en login:', error);
+    res.status(500).json({ message: 'Error del servidor' });
   }
 });
 
 // Register endpoint  
-app.post('/api/auth/register', (req, res) => {
-  const { email, password, firstName, lastName, role = 'USER' } = req.body;
-  
-  if (users.find(u => u.email === email)) {
-    return res.status(400).json({ message: 'El usuario ya existe' });
-  }
-  
-  const newUser = {
-    id: String(users.length + 1),
-    email,
-    password,
-    firstName,
-    lastName,
-    role
-  };
-  
-  users.push(newUser);
-  
-  res.status(201).json({
-    message: 'Usuario creado exitosamente',
-    token: 'demo-token',
-    user: {
-      id: newUser.id,
-      email: newUser.email,
-      firstName: newUser.firstName,
-      lastName: newUser.lastName,
-      role: newUser.role
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { email, password, firstName, lastName, role = 'USER' } = req.body;
+    
+    const existingUser = await db.user.findUnique({ where: { email } });
+    if (existingUser) {
+      return res.status(400).json({ message: 'El usuario ya existe' });
     }
-  });
+    
+    const hashedPassword = await bcrypt.hash(password, 12);
+    
+    const user = await db.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        firstName,
+        lastName,
+        role
+      },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true
+      }
+    });
+    
+    res.status(201).json({
+      message: 'Usuario creado exitosamente',
+      token: 'demo-token',
+      user
+    });
+  } catch (error) {
+    console.error('Error en registro:', error);
+    res.status(500).json({ message: 'Error del servidor' });
+  }
 });
 
-// Create lead (public)
+// Create lead (authenticated users)
 app.post('/api/leads', async (req, res) => {
   try {
     console.log('📝 Recibiendo nuevo lead:', req.body);
     const { firstName, lastName, email, phone, company, position, description, submittedById } = req.body;
     
-    const newLead = {
-      id: String(leads.length + 1),
-      firstName,
-      lastName,
-      email,
-      phone,
-      company,
-      position,
-      description,
-      status: 'PENDING',
-      createdAt: new Date(),
-      submittedById: submittedById || 'guest-user-id' // Use provided ID or default to guest
-    };
+    const lead = await db.lead.create({
+      data: {
+        firstName,
+        lastName,
+        email,
+        phone,
+        company,
+        position,
+        description,
+        submittedById,
+        status: 'PENDING'
+      },
+      include: {
+        submittedBy: true
+      }
+    });
     
-    console.log('✅ Lead creado con ID:', newLead.id);
+    console.log('✅ Lead creado con ID:', lead.id);
     
-    leads.push(newLead);
+    // Create notifications for admins
+    const admins = await db.user.findMany({ where: { role: 'ADMIN' } });
+    
+    const notifications = admins.map(admin => ({
+      userId: admin.id,
+      leadId: lead.id,
+      title: 'Nuevo Lead Pendiente',
+      message: `${firstName} ${lastName} de ${company} ha enviado un nuevo lead para aprobación`,
+      type: 'NEW_LEAD'
+    }));
+    
+    await db.notification.createMany({ data: notifications });
     
     res.status(201).json({
       message: 'Lead enviado exitosamente y está pendiente de aprobación',
-      lead: { id: newLead.id, status: newLead.status }
+      lead: { id: lead.id, status: lead.status }
     });
   } catch (error) {
     console.error('Error creando lead:', error);
@@ -170,28 +178,68 @@ app.post('/api/leads', async (req, res) => {
 });
 
 // Get pending leads (admin only)
-app.get('/api/leads/pending', (req, res) => {
-  const pendingLeads = leads.filter(lead => lead.status === 'PENDING');
-  res.json(pendingLeads);
+app.get('/api/leads/pending', async (req, res) => {
+  try {
+    const leads = await db.lead.findMany({
+      where: { status: 'PENDING' },
+      include: {
+        submittedBy: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(leads);
+  } catch (error) {
+    console.error('Error obteniendo leads pendientes:', error);
+    res.status(500).json({ message: 'Error del servidor' });
+  }
 });
 
 // Get all leads
-app.get('/api/leads', (req, res) => {
-  const { status } = req.query;
-  let filteredLeads = leads;
-  
-  if (status) {
-    filteredLeads = leads.filter(lead => lead.status === status);
+app.get('/api/leads', async (req, res) => {
+  try {
+    const { status, page = 1, limit = 10 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const where = status ? { status } : {};
+    
+    const [leads, total] = await Promise.all([
+      db.lead.findMany({
+        where,
+        include: {
+          submittedBy: true,
+          approvedBy: true
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: parseInt(limit)
+      }),
+      db.lead.count({ where })
+    ]);
+    
+    res.json({
+      leads,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / parseInt(limit)),
+        totalItems: total,
+        itemsPerPage: parseInt(limit)
+      }
+    });
+  } catch (error) {
+    console.error('Error obteniendo leads:', error);
+    res.status(500).json({ message: 'Error del servidor' });
   }
-  
-  res.json({ leads: filteredLeads });
 });
 
 // Approve lead
 app.post('/api/leads/:id/approve', async (req, res) => {
   try {
     const { id } = req.params;
-    const lead = leads.find(l => l.id === id);
+    
+    const lead = await db.lead.findUnique({
+      where: { id },
+      include: { submittedBy: true }
+    });
     
     if (!lead) {
       return res.status(404).json({ message: 'Lead no encontrado' });
@@ -238,13 +286,33 @@ app.post('/api/leads/:id/approve', async (req, res) => {
     }
     
     // Update lead status
-    lead.status = 'APPROVED';
-    lead.salesforceId = salesforceId;
-    lead.approvedAt = new Date();
+    const updatedLead = await db.lead.update({
+      where: { id },
+      data: {
+        status: 'APPROVED',
+        approvedById: '1', // Default admin ID
+        salesforceId
+      },
+      include: {
+        submittedBy: true,
+        approvedBy: true
+      }
+    });
+    
+    // Create notification
+    await db.notification.create({
+      data: {
+        userId: lead.submittedById,
+        leadId: lead.id,
+        title: 'Lead Aprobado',
+        message: `Tu lead para ${lead.company} ha sido aprobado y enviado a Salesforce`,
+        type: 'LEAD_APPROVED'
+      }
+    });
     
     res.json({
       message: 'Lead aprobado exitosamente',
-      lead,
+      lead: updatedLead,
       salesforceCreated: !!salesforceId
     });
   } catch (error) {
@@ -335,34 +403,60 @@ app.get('/api/users/profile', (req, res) => {
 });
 
 // User stats
-app.get('/api/users/stats', (req, res) => {
-  const totalSubmitted = leads.length;
-  const pending = leads.filter(l => l.status === 'PENDING').length;
-  const approved = leads.filter(l => l.status === 'APPROVED').length;
-  const rejected = leads.filter(l => l.status === 'REJECTED').length;
-  
-  res.json({
-    totalSubmitted,
-    totalApproved: approved,
-    byStatus: {
-      pending,
-      approved,
-      rejected
-    }
-  });
+app.get('/api/users/stats', async (req, res) => {
+  try {
+    const [totalSubmitted, pending, approved, rejected] = await Promise.all([
+      db.lead.count(),
+      db.lead.count({ where: { status: 'PENDING' } }),
+      db.lead.count({ where: { status: 'APPROVED' } }),
+      db.lead.count({ where: { status: 'REJECTED' } })
+    ]);
+    
+    res.json({
+      totalSubmitted,
+      totalApproved: approved,
+      byStatus: {
+        pending,
+        approved,
+        rejected
+      }
+    });
+  } catch (error) {
+    console.error('Error obteniendo estadísticas:', error);
+    res.status(500).json({ message: 'Error del servidor' });
+  }
 });
 
 // Notifications
-app.get('/api/notifications', (req, res) => {
-  res.json({
-    notifications: [],
-    pagination: { currentPage: 1, totalPages: 1, totalItems: 0 },
-    unreadCount: 0
-  });
+app.get('/api/notifications', async (req, res) => {
+  try {
+    const notifications = await db.notification.findMany({
+      where: { userId: '1' }, // Default to admin for demo
+    });
+    
+    const unreadCount = notifications.filter(n => !n.read).length;
+    
+    res.json({
+      notifications,
+      pagination: { currentPage: 1, totalPages: 1, totalItems: notifications.length },
+      unreadCount
+    });
+  } catch (error) {
+    console.error('Error obteniendo notificaciones:', error);
+    res.status(500).json({ message: 'Error del servidor' });
+  }
 });
 
-app.get('/api/notifications/unread-count', (req, res) => {
-  res.json({ count: 0 });
+app.get('/api/notifications/unread-count', async (req, res) => {
+  try {
+    const count = await db.notification.findMany({
+      where: { userId: '1', read: false } // Default to admin for demo
+    });
+    res.json({ count: count.length });
+  } catch (error) {
+    console.error('Error obteniendo conteo de notificaciones:', error);
+    res.json({ count: 0 });
+  }
 });
 
 // Health check
@@ -370,36 +464,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// Add some sample data
-leads.push(
-  {
-    id: '1',
-    firstName: 'Juan',
-    lastName: 'Pérez',
-    email: 'juan.perez@empresa.com',
-    phone: '+54 11 1234-5678',
-    company: 'Empresa ABC S.A.',
-    position: 'Gerente de Ventas',
-    description: 'Interesado en nuestros servicios de consultoría',
-    status: 'PENDING',
-    createdAt: new Date(Date.now() - 86400000), // 1 day ago
-    submittedById: '2'
-  },
-  {
-    id: '2',
-    firstName: 'María',
-    lastName: 'González',
-    email: 'maria.gonzalez@techcorp.com',
-    phone: '+54 11 9876-5432',
-    company: 'TechCorp Solutions',
-    position: 'Directora de Marketing',
-    description: 'Necesita soluciones de automatización para su equipo',
-    status: 'APPROVED',
-    createdAt: new Date(Date.now() - 172800000), // 2 days ago
-    submittedById: '2',
-    salesforceId: 'SF_12345'
-  }
-);
+// Sample data is now loaded from database initialization
 
 const PORT = process.env.PORT || 4000;
 

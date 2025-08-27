@@ -3,7 +3,10 @@ const cors = require('cors');
 const helmet = require('helmet');
 const http = require('http');
 const socketIo = require('socket.io');
+const { PrismaClient } = require('@prisma/client');
 require('dotenv').config();
+
+const prisma = new PrismaClient();
 
 const authRoutes = require('./routes/auth');
 const leadRoutes = require('./routes/leads');
@@ -41,8 +44,9 @@ io.on('connection', (socket) => {
   });
 });
 
-// Make io accessible to routes
+// Make io and prisma accessible to routes
 app.set('socketio', io);
+app.set('prisma', prisma);
 
 // Routes
 app.use('/api/auth', authRoutes);

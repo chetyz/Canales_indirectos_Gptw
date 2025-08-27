@@ -7,7 +7,7 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
-import LeadForm from './pages/LeadForm';
+import CreateLead from './pages/CreateLead';
 import AdminDashboard from './pages/AdminDashboard';
 import Notifications from './pages/Notifications';
 import Profile from './pages/Profile';
@@ -25,7 +25,6 @@ function App() {
               {/* Public Routes */}
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
-              <Route path="/lead-form" element={<LeadForm />} />
               
               {/* Protected Routes */}
               <Route path="/" element={
@@ -35,6 +34,7 @@ function App() {
               }>
                 <Route index element={<Navigate to="/dashboard" replace />} />
                 <Route path="dashboard" element={<Dashboard />} />
+                <Route path="create-lead" element={<CreateLead />} />
                 <Route path="notifications" element={<Notifications />} />
                 <Route path="profile" element={<Profile />} />
                 

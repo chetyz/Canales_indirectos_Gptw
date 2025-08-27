@@ -69,7 +69,7 @@ const CreateLead = () => {
               setSubmitted(false);
               reset();
             }}
-            className="btn btn-primary w-full"
+            className="btn btn-primary btn-block"
           >
             Crear otro lead
           </button>
@@ -264,7 +264,7 @@ const CreateLead = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-red-600 text-white py-4 px-6 rounded-md text-lg font-semibold hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="btn btn-primary btn-large btn-block"
             >
               {loading ? (
                 <div className="flex items-center justify-center">

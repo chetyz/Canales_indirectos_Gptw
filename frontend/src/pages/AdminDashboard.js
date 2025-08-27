@@ -276,7 +276,7 @@ const AdminDashboard = () => {
                       <button
                         onClick={() => handleApproveLead(lead.id)}
                         disabled={processingLead === lead.id}
-                        className="btn btn-success flex-1 lg:flex-none"
+                        className="btn btn-success"
                       >
                         {processingLead === lead.id ? (
                           <div className="spinner w-4 h-4"></div>
@@ -296,7 +296,7 @@ const AdminDashboard = () => {
                           }
                         }}
                         disabled={processingLead === lead.id}
-                        className="btn btn-danger flex-1 lg:flex-none"
+                        className="btn btn-danger"
                       >
                         <XCircle size={16} className="mr-2" />
                         Rechazar

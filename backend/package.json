@@ -1,0 +1,32 @@
+{
+  "name": "lead-approval-backend",
+  "version": "1.0.0",
+  "description": "Backend para sistema de aprobación de leads",
+  "main": "server.js",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js",
+    "db:generate": "npx prisma generate",
+    "db:push": "npx prisma db push",
+    "db:studio": "npx prisma studio",
+    "db:init": "node scripts/init-db.js",
+    "setup": "npm run db:generate && npm run db:push && npm run db:init"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.2.0",
+    "axios": "^1.11.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-validator": "^7.0.1",
+    "helmet": "^7.0.0",
+    "jsforce": "^1.11.1",
+    "jsonwebtoken": "^9.0.2",
+    "socket.io": "^4.7.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "prisma": "^5.2.0"
+  }
+}

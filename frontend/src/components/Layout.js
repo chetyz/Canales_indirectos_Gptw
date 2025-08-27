@@ -35,9 +35,11 @@ const Layout = () => {
         <div className="container">
           <div className="flex items-center justify-between h-16">
             <div className="navbar-brand">
-              <div className="navbar-logo">
-                GPW
-              </div>
+              <img 
+                src="/logo_great.png" 
+                alt="Great Place to Work" 
+                className="h-12 w-auto"
+              />
               <h1 className="navbar-title">
                 Great Place to Work
               </h1>

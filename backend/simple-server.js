@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const bcrypt = require('bcryptjs');
-const db = require('./db-sqlite');
+const db = require('./db-postgres');
 require('dotenv').config();
 
 const app = express();
@@ -406,7 +406,7 @@ app.get('/api/users/profile', (req, res) => {
 app.get('/api/users/stats', async (req, res) => {
   try {
     const [totalSubmitted, pending, approved, rejected] = await Promise.all([
-      db.lead.count(),
+      db.lead.count({}),
       db.lead.count({ where: { status: 'PENDING' } }),
       db.lead.count({ where: { status: 'APPROVED' } }),
       db.lead.count({ where: { status: 'REJECTED' } })
